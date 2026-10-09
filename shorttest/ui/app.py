@@ -151,10 +151,10 @@ class App(tk.Tk):
         self.exam_view.load(exam, key)
         self.show(self.exam_view)
 
-    def submit(self, exam: Exam, responses: dict[int, ResponseValue]) -> None:
+    def submit(self, exam: Exam, responses: dict[int, ResponseValue], *, elapsed_seconds: int | None = None, timed_out: bool = False) -> None:
         assert self.key is not None
         options = GradeOptions(ignore_inner_spaces=self.settings.ignore_inner_spaces)
-        result = grade(exam, self.key, responses, options)
+        result = grade(exam, self.key, responses, options, elapsed_seconds=elapsed_seconds, timed_out=timed_out)
         self.result_view.load(result)
         self.show(self.result_view)
 

@@ -20,12 +20,32 @@ def format_response(value: ResponseValue) -> str:
     return value.strip() if value.strip() else "(미응답)"
 
 
+def format_duration(seconds: int) -> str:
+    minutes, sec = divmod(max(0, int(seconds)), 60)
+    return f"{minutes}분 {sec}초" if minutes else f"{sec}초"
+
+
+def format_time_line(result: Result) -> str:
+    """'소요 시간: 12분 3초 (제한 30분)' 또는 '소요 시간: 5초 (제한 없음)'. 시간이 끝나 자동 제출되면 표시."""
+    if result.elapsed_seconds is None:
+        return ""
+    limit = f"제한 {result.exam.time_limit_minutes}분" if result.exam.has_time_limit else "제한 없음"
+    text = f"소요 시간: {format_duration(result.elapsed_seconds)} ({limit})"
+    if result.timed_out:
+        text += " · 시간 종료로 자동 제출"
+    return text
+
+
 def format_result(result: Result) -> str:
     lines = [
         "ShortTest 결과",
         f"시험: {result.exam.title}",
         f"일시: {result.finished_at:%Y-%m-%d %H:%M}",
         f"총점: {result.earned} / {result.total} ({result.percent:.0f}%)   정답: {result.correct_count} / {len(result.items)}",
+    ]
+    if (time_line := format_time_line(result)):
+        lines.append(time_line)
+    lines += [
         "",
         "번호\t결과\t점수\t유형\t내 답\t정답",
     ]

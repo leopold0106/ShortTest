@@ -35,6 +35,11 @@ class Exam:
     description: str = ""
     questions: list[Question] = field(default_factory=list)
     source_path: Path | None = None
+    time_limit_minutes: int = 0  # 0 = 무제한
+
+    @property
+    def has_time_limit(self) -> bool:
+        return self.time_limit_minutes > 0
 
     @property
     def total_points(self) -> int:
@@ -47,6 +52,7 @@ class Exam:
             description=self.description,
             questions=[q for q in self.questions if q.number in numbers],
             source_path=self.source_path,
+            time_limit_minutes=self.time_limit_minutes,
         )
 
 
@@ -88,6 +94,8 @@ class Result:
     exam: Exam
     items: list[QuestionResult]
     finished_at: datetime
+    elapsed_seconds: int | None = None  # 시험 시작부터 제출까지
+    timed_out: bool = False  # 제한 시간이 끝나 자동 제출됨
 
     @property
     def total(self) -> int:

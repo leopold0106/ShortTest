@@ -142,3 +142,14 @@ def test_load_exam_collects_both_files(tmp_path):
 def test_default_answers_path():
     assert default_answers_path(Path("x/a.questions.txt")) == Path("x/a.answers.txt")
     assert default_answers_path(Path("x/a.txt")) == Path("x/a.answers.txt")
+
+
+def test_time_limit():
+    assert parse_questions_text("# 시간: 30\n1. q\n").time_limit_minutes == 30
+    assert parse_questions_text("# 시간: 45분\n1. q\n").time_limit_minutes == 45
+    assert parse_questions_text("# 시간: 0\n1. q\n").time_limit_minutes == 0
+    assert not parse_questions_text("1. q\n").has_time_limit
+    msgs = _issues("# 시간: 삼십\n1. q\n")
+    assert any("분 단위 숫자" in m for m in msgs)
+    msgs = _issues("# 시간: -5\n1. q\n")
+    assert any("분 단위 숫자" in m for m in msgs)

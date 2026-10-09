@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
@@ -82,6 +83,9 @@ class ExamView(tk.Frame):
         self.option_rows: list[OptionRow] = []
         self._entry: ttk.Entry | None = None
         self._entry_var: tk.StringVar | None = None
+        self.started_at = 0.0
+        self.deadline: float | None = None
+        self._timer_job: str | None = None
 
         # 상단 바
         top = tk.Frame(self, bg=T.CARD, padx=24, pady=12)
@@ -97,6 +101,8 @@ class ExamView(tk.Frame):
         self.desc_label.pack(anchor="w")
         self.progress_label = T.label(row, "", fg=T.MUTED, anchor="e")
         self.progress_label.pack(side="right")
+        self.timer_label = tk.Label(row, text="", font=f.heading, fg=T.ACCENT, bg=T.ACCENT_SOFT, padx=12, pady=2)
+        self.timer_label.pack(side="right", padx=(0, 16))
         self.progress = ttk.Progressbar(top, style="Teal.Horizontal.TProgressbar", maximum=1, value=0)
         self.progress.pack(fill="x", pady=(8, 0))
 
@@ -170,11 +176,13 @@ class ExamView(tk.Frame):
         self.index = 0
         self.title_label.configure(text=exam.title)
         mc = sum(1 for q in exam.questions if q.is_multiple_choice)
-        desc = f"객관식 {mc}문항, 단답형 {len(exam.questions) - mc}문항 · 총 {exam.total_points}점"
+        limit = f"제한 {exam.time_limit_minutes}분" if exam.has_time_limit else "시간 제한 없음"
+        desc = f"객관식 {mc}문항, 단답형 {len(exam.questions) - mc}문항 · 총 {exam.total_points}점 · {limit}"
         if exam.description:
             desc = f"{exam.description}  ·  {desc}"
         self.desc_label.configure(text=desc)
         self.progress.configure(maximum=max(1, len(exam.questions)))
+        self._start_timer(exam)
 
         for child in self.number_grid.winfo_children():
             child.destroy()
@@ -188,6 +196,52 @@ class ExamView(tk.Frame):
             btn.pack(padx=1, pady=1)
             self.number_buttons[q.number] = (outer, btn)
         self.show_question(0)
+
+    # ------------------------------------------------------------ 타이머
+
+    def _start_timer(self, exam: Exam) -> None:
+        self._stop_timer()
+        self.started_at = time.monotonic()
+        if exam.has_time_limit:
+            self.deadline = self.started_at + exam.time_limit_minutes * 60
+            self.timer_label.configure(fg=T.ACCENT, bg=T.ACCENT_SOFT)
+            self._tick()
+        else:
+            self.deadline = None
+            self.timer_label.configure(text="제한 시간 없음", fg=T.MUTED, bg=T.BG)
+
+    def _stop_timer(self) -> None:
+        if self._timer_job is not None:
+            self.after_cancel(self._timer_job)
+            self._timer_job = None
+
+    def remaining_seconds(self) -> int | None:
+        if self.deadline is None:
+            return None
+        return max(0, int(round(self.deadline - time.monotonic())))
+
+    def elapsed_seconds(self) -> int:
+        return int(time.monotonic() - self.started_at)
+
+    def _tick(self) -> None:
+        self._timer_job = None
+        remaining = self.remaining_seconds()
+        if remaining is None:
+            return
+        minutes, seconds = divmod(remaining, 60)
+        self.timer_label.configure(text=f"⏱ {minutes:02d}:{seconds:02d}")
+        if remaining <= 60:
+            self.timer_label.configure(fg=T.BAD_FG, bg=T.BAD_BG_STRONG)
+        if remaining <= 0:
+            self._time_up()
+            return
+        self._timer_job = self.after(500, self._tick)
+
+    def _time_up(self) -> None:
+        if self.exam is None or self.app.current_view is not self:
+            return
+        messagebox.showinfo("시간 종료", "제한 시간이 끝나 지금까지 쓴 답으로 자동 제출합니다.", parent=self)
+        self._submit_now(timed_out=True)
 
     @property
     def current(self) -> Question:
@@ -345,9 +399,15 @@ class ExamView(tk.Frame):
         if unanswered:
             if not messagebox.askyesno("제출", f"아직 응답하지 않은 문제가 {unanswered}개 있습니다.\n그래도 제출할까요?", parent=self):
                 return
-        self.app.submit(self.exam, dict(self.responses))
+        self._submit_now(timed_out=False)
+
+    def _submit_now(self, *, timed_out: bool) -> None:
+        assert self.exam is not None
+        self._stop_timer()
+        self.app.submit(self.exam, dict(self.responses), elapsed_seconds=self.elapsed_seconds(), timed_out=timed_out)
 
     def home(self) -> None:
         if self.responses and not messagebox.askyesno("홈으로", "지금까지 쓴 답이 사라집니다. 홈으로 갈까요?", parent=self):
             return
+        self._stop_timer()
         self.app.go_home()

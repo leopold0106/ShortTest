@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from shorttest.core.markup import strip_markup
 from shorttest.core.model import QuestionResult, Result
-from shorttest.core.report import default_result_filename, format_answer, format_response, format_result
+from shorttest.core.report import default_result_filename, format_answer, format_response, format_result, format_time_line
 from shorttest.ui import theme as T
 
 if TYPE_CHECKING:
@@ -43,6 +43,8 @@ class ResultView(tk.Frame):
         self.score_total.pack(side="left", anchor="s", padx=(6, 0), pady=(0, 6))
         self.score_title = T.label(score, "", fg="#D6ECE9", bg=T.ACCENT, font=f.small)
         self.score_title.pack(anchor="w")
+        self.time_label = T.label(score, "", fg="#FFFFFF", bg=T.ACCENT, font=f.small_bold, wraplength=260, justify="left")
+        self.time_label.pack(anchor="w", fill="x")
 
         pct = T.card(stats, padx=22, pady=16)
         pct.outer.grid(row=0, column=1, sticky="nsew", padx=8)
@@ -108,6 +110,7 @@ class ResultView(tk.Frame):
         self.score_big.configure(text=str(result.earned))
         self.score_total.configure(text=f"/ {result.total}")
         self.score_title.configure(text=result.exam.title)
+        self.time_label.configure(text=format_time_line(result))
         self.pct_big.configure(text=f"{result.percent:.0f}%")
         self.pct_bar.configure(value=result.percent)
         blank = sum(1 for i in result.items if not i.answered)

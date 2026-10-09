@@ -16,7 +16,7 @@ QUESTIONS_SUFFIX = ".questions.txt"
 
 CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩"
 
-_RE_META = re.compile(r"^#\s*(제목|설명)\s*[:：]\s*(.*)$")
+_RE_META = re.compile(r"^#\s*(제목|설명|시간)\s*[:：]\s*(.*)$")
 _RE_COMMENT = re.compile(r"^#")
 _RE_QUESTION = re.compile(r"^(\d+)\.\s+(.*)$")
 _RE_CHOICE = re.compile(r"^\s*(?:(\d+)\)|([" + CIRCLED + r"]))\s*(.*)$")
@@ -111,8 +111,14 @@ def parse_questions_text(text: str, path: Path | None = None) -> Exam:
             key, value = m.group(1), m.group(2).strip()
             if key == "제목":
                 exam.title = value
-            else:
+            elif key == "설명":
                 exam.description = value
+            else:
+                minutes = re.sub(r"\s*분\s*$", "", value)
+                if minutes.isascii() and minutes.isdigit():
+                    exam.time_limit_minutes = int(minutes)
+                else:
+                    issues.append(ParseIssue(path, line_no, f"'# 시간:'은 분 단위 숫자여야 합니다. (0 = 무제한) 지금 값: '{value}'"))
             continue
         if _RE_COMMENT.match(line):
             continue

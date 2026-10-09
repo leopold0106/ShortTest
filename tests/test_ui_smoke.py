@@ -135,3 +135,40 @@ def test_rich_text_sub_sup(app):
     assert set(w.tag_names()) >= {"s_sup", "s_i", "s_sub"}
     assert int(w.tag_cget("s_sup", "offset")) > 0
     assert int(w.tag_cget("s_sub", "offset")) < 0
+
+
+def test_timer_and_auto_submit(app, monkeypatch, tmp_path):
+    import time
+    from tkinter import messagebox
+    from shorttest.ui import theme as T
+
+    q = tmp_path / "t.questions.txt"
+    q.write_text("# 시간: 1\n1. q\n1) a\n2) b\n", encoding="utf-8")
+    (tmp_path / "t.answers.txt").write_text("1: 2\n", encoding="utf-8")
+    assert app.open_exam(q)
+    view = app.exam_view
+    assert view.timer_label.cget("text").startswith("⏱ 01:00") or view.timer_label.cget("text").startswith("⏱ 00:59")
+    assert view.desc_label.cget("text").endswith("제한 1분")
+    assert view._timer_job is not None
+
+    view.toggle_choice(2)
+    shown = []
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: shown.append(a))
+    view.deadline = time.monotonic() - 1  # 시간이 끝난 것으로
+    view._tick()
+    assert shown and "시간 종료" in shown[0][0]
+    assert app.current_view is app.result_view
+    assert view._timer_job is None
+    result = app.result_view.result
+    assert result.timed_out and result.earned == 1
+    assert "시간 종료로 자동 제출" in app.result_view.time_label.cget("text")
+    assert view.timer_label.cget("fg") == T.BAD_FG
+
+
+def test_no_time_limit_label(app):
+    assert app.open_exam(EXAMPLES / "sample.questions.txt")
+    assert app.exam_view.timer_label.cget("text") == "⏱ 10:00" or app.exam_view.timer_label.cget("text") == "⏱ 09:59"
+    app.exam_view.exam.time_limit_minutes = 0
+    app.exam_view.load(app.exam_view.exam, app.exam_view.key)
+    assert app.exam_view.timer_label.cget("text") == "제한 시간 없음"
+    assert app.exam_view._timer_job is None

@@ -28,7 +28,15 @@ def is_correct(question_number: int, response: ResponseValue, key: AnswerKey, op
     return any(given == normalize(a, ignore_inner_spaces=options.ignore_inner_spaces) for a in expected)
 
 
-def grade(exam: Exam, key: AnswerKey, responses: dict[int, ResponseValue], options: GradeOptions | None = None) -> Result:
+def grade(
+    exam: Exam,
+    key: AnswerKey,
+    responses: dict[int, ResponseValue],
+    options: GradeOptions | None = None,
+    *,
+    elapsed_seconds: int | None = None,
+    timed_out: bool = False,
+) -> Result:
     options = options or GradeOptions()
     items: list[QuestionResult] = []
     for q in exam.questions:
@@ -47,4 +55,4 @@ def grade(exam: Exam, key: AnswerKey, responses: dict[int, ResponseValue], optio
                 earned=q.points if correct else 0,
             )
         )
-    return Result(exam=exam, items=items, finished_at=datetime.now())
+    return Result(exam=exam, items=items, finished_at=datetime.now(), elapsed_seconds=elapsed_seconds, timed_out=timed_out)
