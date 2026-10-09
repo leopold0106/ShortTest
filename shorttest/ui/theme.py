@@ -30,12 +30,30 @@ BAD_BG = "#FEF2F2"
 BAD_BG_STRONG = "#FEE2E2"
 
 
+FONT_FAMILY = "맑은 고딕"
+FONT_FAMILY_CANDIDATES = ("맑은 고딕", "Malgun Gothic")  # Tk가 영문 이름으로만 알 수도 있다
+
+
+def pick_font_family(root: tk.Misc) -> str:
+    """맑은 고딕을 쓴다. 설치된 이름(한글/영문)으로 찾고, 없는 환경(Windows 아님)에서만 기본 글꼴로 대체."""
+    installed = set(tkfont.families(root))
+    for name in FONT_FAMILY_CANDIDATES:
+        if name in installed:
+            return name
+    if sys.platform == "win32":
+        return "Malgun Gothic"  # Windows 7 이상 기본 탑재
+    return tkfont.nametofont("TkDefaultFont").cget("family")
+
+
 class Fonts:
     def __init__(self, root: tk.Misc):
-        family = "맑은 고딕" if sys.platform == "win32" else tkfont.nametofont("TkDefaultFont").cget("family")
+        family = pick_font_family(root)
         size = 11
-        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
-            tkfont.nametofont(name).configure(family=family, size=size)
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont", "TkTooltipFont", "TkIconFont"):
+            try:
+                tkfont.nametofont(name).configure(family=family, size=size)
+            except tk.TclError:
+                pass
         self.root = root
         self.family = family
         self.size = size
@@ -103,7 +121,7 @@ def apply_styles(root: tk.Tk, fonts: Fonts) -> None:
 
     # 표
     style.configure("Treeview", background=CARD, fieldbackground=CARD, foreground=TEXT, rowheight=fonts.size + 20,
-                    borderwidth=0, relief="flat")
+                    borderwidth=0, relief="flat", font=fonts.base)
     style.configure("Treeview.Heading", background=HEAD_BG, foreground=MUTED, font=fonts.small_bold,
                     relief="flat", padding=(8, 8), bordercolor=BORDER)
     style.map("Treeview.Heading", background=[("active", HEAD_BG)])
@@ -116,6 +134,11 @@ def apply_styles(root: tk.Tk, fonts: Fonts) -> None:
     root.configure(background=BG)
     root.option_add("*Text.font", fonts.base)
     root.option_add("*Listbox.font", fonts.base)
+    root.option_add("*Entry.font", fonts.base)
+    root.option_add("*Menu.font", fonts.base)
+    root.option_add("*Button.font", fonts.base)
+    root.option_add("*Label.font", fonts.base)
+    root.option_add("*Dialog.msg.font", fonts.base)
 
 
 # ---------------------------------------------------------------- 위젯 도우미

@@ -172,3 +172,21 @@ def test_no_time_limit_label(app):
     app.exam_view.load(app.exam_view.exam, app.exam_view.key)
     assert app.exam_view.timer_label.cget("text") == "제한 시간 없음"
     assert app.exam_view._timer_job is None
+
+
+def test_font_family_is_malgun_when_available(app, monkeypatch):
+    from tkinter import font as tkfont
+    from shorttest.ui import theme as T
+
+    if any(n in set(tkfont.families(app)) for n in T.FONT_FAMILY_CANDIDATES):
+        assert app.fonts.family in T.FONT_FAMILY_CANDIDATES
+    monkeypatch.setattr(tkfont, "families", lambda *_: ["Malgun Gothic", "Arial"])
+    assert T.pick_font_family(app) == "Malgun Gothic"
+    monkeypatch.setattr(tkfont, "families", lambda *_: ["맑은 고딕", "Malgun Gothic"])
+    assert T.pick_font_family(app) == "맑은 고딕"
+    monkeypatch.setattr(tkfont, "families", lambda *_: ["Arial"])
+    monkeypatch.setattr(T.sys, "platform", "win32")
+    assert T.pick_font_family(app) == "Malgun Gothic"
+    # 실제 Font 객체들이 같은 글꼴을 쓰는지
+    assert app.fonts.heading.cget("family") == app.fonts.family
+    assert tkfont.nametofont("TkDefaultFont").cget("family") == app.fonts.family

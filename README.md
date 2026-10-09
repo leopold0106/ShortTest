@@ -65,6 +65,7 @@
 
 ## 설정과 파일 위치
 
+- 글꼴은 Windows 기본 탑재인 **맑은 고딕**을 씁니다. 따로 설치할 것이 없습니다.
 - 설정(최근 파일, 띄어쓰기 무시 등)은 `%APPDATA%\ShortTest\settings.json`에 저장됩니다.
 - 예상 못 한 오류는 `%APPDATA%\ShortTest\error.log`에 기록됩니다.
 
