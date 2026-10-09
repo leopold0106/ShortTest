@@ -7,14 +7,14 @@ import traceback
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
-from tkinter import font as tkfont
+from tkinter import filedialog, messagebox
 
 from shorttest import APP_NAME, __version__
 from shorttest.core.grader import GradeOptions, grade
 from shorttest.core.model import AnswerKey, Exam, ResponseValue
 from shorttest.core.parser import ANSWERS_SUFFIX, QUESTIONS_SUFFIX, ParseError, default_answers_path, load_exam
 from shorttest.settings import Settings, error_log_path
+from shorttest.ui import theme as T
 from shorttest.ui.dialogs import HelpWindow, save_template, show_parse_errors
 from shorttest.ui.exam_view import ExamView
 from shorttest.ui.result_view import ResultView
@@ -27,15 +27,16 @@ class App(tk.Tk):
         self.settings = settings or Settings.load()
         self.exam: Exam | None = None
         self.key: AnswerKey | None = None
-        self.current_view: ttk.Frame | None = None
+        self.current_view: tk.Frame | None = None
 
         self.title(APP_NAME)
-        self.minsize(900, 600)
+        self.minsize(960, 640)
         self.geometry(f"{self.settings.window_width}x{self.settings.window_height}")
-        self._setup_fonts_and_styles()
+        self.fonts = T.Fonts(self)
+        T.apply_styles(self, self.fonts)
         self._build_menu()
 
-        container = ttk.Frame(self)
+        container = tk.Frame(self, bg=T.BG)
         container.pack(fill="both", expand=True)
         container.rowconfigure(0, weight=1)
         container.columnconfigure(0, weight=1)
@@ -48,34 +49,6 @@ class App(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.report_callback_exception = self._report_exception  # type: ignore[assignment]
-
-    # ------------------------------------------------------------ 모양
-
-    def _setup_fonts_and_styles(self) -> None:
-        family = "맑은 고딕" if sys.platform == "win32" else None
-        size = 11
-        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkFixedFont"):
-            f = tkfont.nametofont(name)
-            if family and name != "TkFixedFont":
-                f.configure(family=family)
-            f.configure(size=size)
-        base = tkfont.nametofont("TkDefaultFont")
-        self.font_title = base.copy()
-        self.font_title.configure(size=size + 7, weight="bold")
-        self.font_heading = base.copy()
-        self.font_heading.configure(size=size + 2, weight="bold")
-        self.font_entry = base.copy()
-        self.font_entry.configure(size=size + 1)
-
-        style = ttk.Style(self)
-        if sys.platform == "win32" and "vista" in style.theme_names():
-            style.theme_use("vista")
-        style.configure("Treeview", rowheight=size + 17)
-        style.configure("Big.TButton", font=self.font_heading, padding=(14, 6))
-        self.option_add("*Text.font", base)
-        self.option_add("*Listbox.font", base)
-        self.option_add("*Radiobutton.font", base)
-        self.option_add("*Checkbutton.font", base)
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self)
@@ -107,7 +80,7 @@ class App(tk.Tk):
 
     # ------------------------------------------------------------ 화면 전환
 
-    def show(self, view: ttk.Frame) -> None:
+    def show(self, view: tk.Frame) -> None:
         self.current_view = view
         view.tkraise()
 

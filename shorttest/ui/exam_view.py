@@ -1,4 +1,4 @@
-"""시험 화면: 문제 목록 + 문제 영역 + 이동/제출."""
+"""시험 화면: 진행 막대 + 번호 격자 + 문제 카드 + 이동/제출."""
 
 from __future__ import annotations
 
@@ -7,79 +7,152 @@ from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
 from shorttest.core.model import AnswerKey, Exam, Question, ResponseValue
+from shorttest.ui import theme as T
 
 if TYPE_CHECKING:
     from shorttest.ui.app import App
 
+GRID_COLUMNS = 4
 
-class ExamView(ttk.Frame):
+
+class OptionRow(tk.Frame):
+    """객관식 보기 한 줄. 행 전체가 클릭 영역이며 선택되면 틸 테두리와 연한 바탕."""
+
+    def __init__(self, parent: tk.Misc, view: "ExamView", number: int, text: str, multi: bool):
+        super().__init__(parent, bg=T.BORDER)
+        self.view = view
+        self.number = number
+        self.multi = multi
+        self.selected = False
+        f = view.app.fonts
+        self.inner = tk.Frame(self, bg=T.CARD, padx=12, pady=8, cursor="hand2", takefocus=1)
+        self.inner.pack(fill="x", padx=1, pady=1)
+        self.indicator = tk.Canvas(self.inner, width=18, height=18, bg=T.CARD, highlightthickness=0, cursor="hand2")
+        self.indicator.pack(side="left", padx=(0, 10))
+        self.num_label = tk.Label(self.inner, text=f"{number})", font=f.bold, fg=T.MUTED, bg=T.CARD, width=3, anchor="w", cursor="hand2")
+        self.num_label.pack(side="left")
+        self.text = T.RichText(self.inner, f, size=f.size + 1, max_lines=6, cursor="hand2")
+        self.text.pack(side="left", fill="x", expand=True)
+        self.text.set_markup(text)
+        for w in (self.inner, self.indicator, self.num_label, self.text):
+            w.bind("<Button-1>", self._click)
+        self.inner.bind("<space>", self._click)
+        self.inner.bind("<Return>", self._click)
+        self.inner.bind("<FocusIn>", lambda _e: self.configure(bg=T.ACCENT if not self.selected else T.ACCENT_DARK))
+        self.inner.bind("<FocusOut>", lambda _e: self._paint())
+        self._paint()
+
+    def _click(self, _event=None):
+        self.view.toggle_choice(self.number)
+        return "break"
+
+    def set_selected(self, selected: bool) -> None:
+        self.selected = selected
+        self._paint()
+
+    def _paint(self) -> None:
+        bg = T.ACCENT_SOFT if self.selected else T.CARD
+        self.configure(bg=T.ACCENT if self.selected else T.BORDER)
+        for w in (self.inner, self.indicator, self.num_label, self.text):
+            w.configure(bg=bg)
+        self.num_label.configure(fg=T.ACCENT if self.selected else T.MUTED)
+        c = self.indicator
+        c.delete("all")
+        if self.multi:
+            c.create_rectangle(2, 2, 16, 16, outline=T.ACCENT if self.selected else T.BORDER_STRONG, width=2,
+                               fill=T.ACCENT if self.selected else bg)
+            if self.selected:
+                c.create_line(5, 9, 8, 12, 13, 6, fill="#FFFFFF", width=2, capstyle="round", joinstyle="round")
+        else:
+            c.create_oval(2, 2, 16, 16, outline=T.ACCENT if self.selected else T.BORDER_STRONG, width=2, fill=bg)
+            if self.selected:
+                c.create_oval(6, 6, 12, 12, outline=T.ACCENT, fill=T.ACCENT)
+
+
+class ExamView(tk.Frame):
     def __init__(self, parent: tk.Misc, app: "App"):
-        super().__init__(parent, padding=10)
+        super().__init__(parent, bg=T.BG)
         self.app = app
+        f = app.fonts
         self.exam: Exam | None = None
         self.key: AnswerKey | None = None
         self.responses: dict[int, ResponseValue] = {}
         self.index = 0
-        self._suppress_tree_event = False
-        self._answer_vars: list[tk.Variable] = []
+        self.number_buttons: dict[int, tuple[tk.Frame, tk.Button]] = {}
+        self.option_rows: list[OptionRow] = []
         self._entry: ttk.Entry | None = None
+        self._entry_var: tk.StringVar | None = None
 
-        # 상단: 제목, 설명, 진행 상황
-        header = ttk.Frame(self)
-        header.pack(fill="x")
-        self.title_label = ttk.Label(header, text="", font=app.font_heading)
-        self.title_label.pack(side="left")
-        self.progress_label = ttk.Label(header, text="")
+        # 상단 바
+        top = tk.Frame(self, bg=T.CARD, padx=24, pady=12)
+        top.pack(fill="x")
+        tk.Frame(self, bg=T.BORDER, height=1).pack(fill="x")
+        row = tk.Frame(top, bg=T.CARD)
+        row.pack(fill="x")
+        titles = tk.Frame(row, bg=T.CARD)
+        titles.pack(side="left")
+        self.title_label = T.label(titles, "", font=f.heading)
+        self.title_label.pack(anchor="w")
+        self.desc_label = T.label(titles, "", fg=T.MUTED, font=f.small)
+        self.desc_label.pack(anchor="w")
+        self.progress_label = T.label(row, "", fg=T.MUTED, anchor="e")
         self.progress_label.pack(side="right")
-        self.desc_label = ttk.Label(self, text="", foreground="#666")
-        self.desc_label.pack(fill="x", pady=(0, 8))
+        self.progress = ttk.Progressbar(top, style="Teal.Horizontal.TProgressbar", maximum=1, value=0)
+        self.progress.pack(fill="x", pady=(8, 0))
 
-        # 가운데: 왼쪽 목록 / 오른쪽 문제
-        middle = ttk.Frame(self)
+        # 가운데
+        middle = tk.Frame(self, bg=T.BG, padx=24, pady=20)
         middle.pack(fill="both", expand=True)
 
-        left = ttk.Frame(middle)
-        left.pack(side="left", fill="y", padx=(0, 10))
-        self.tree = ttk.Treeview(left, columns=("no", "done"), show="headings", selectmode="browse", height=20)
-        self.tree.heading("no", text="번호")
-        self.tree.heading("done", text="응답")
-        self.tree.column("no", width=60, anchor="center", stretch=False)
-        self.tree.column("done", width=60, anchor="center", stretch=False)
-        tree_scroll = ttk.Scrollbar(left, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=tree_scroll.set)
-        self.tree.pack(side="left", fill="y")
-        tree_scroll.pack(side="left", fill="y")
-        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        side = T.card(middle, padx=16, pady=16)
+        side.outer.pack(side="left", fill="y", padx=(0, 20))
+        T.label(side, "문제 목록", fg=T.MUTED, font=f.small_bold).pack(anchor="w", pady=(0, 10))
+        self.number_grid = tk.Frame(side, bg=T.CARD)
+        self.number_grid.pack(anchor="n")
+        legend = tk.Frame(side, bg=T.CARD)
+        legend.pack(anchor="w", pady=(14, 0))
+        for color, border, text in ((T.ACCENT, T.ACCENT, "응답함"), (T.ACCENT_SOFT, T.ACCENT, "현재 문제"), (T.CARD, T.BORDER_STRONG, "미응답")):
+            r = tk.Frame(legend, bg=T.CARD)
+            r.pack(anchor="w", pady=1)
+            tk.Frame(r, bg=border, width=12, height=12).pack(side="left", padx=(0, 8))
+            tk.Frame(r, bg=color, width=8, height=8).place(x=2, y=2)
+            T.label(r, text, fg=T.MUTED, font=f.small).pack(side="left")
 
-        right = ttk.Frame(middle)
-        right.pack(side="left", fill="both", expand=True)
-        self.q_header = ttk.Label(right, text="", font=app.font_heading)
-        self.q_header.pack(anchor="w")
+        main = T.card(middle)
+        main.outer.pack(side="left", fill="both", expand=True)
+        self.scroll = T.ScrollFrame(main)
+        self.scroll.pack(fill="both", expand=True)
+        body = tk.Frame(self.scroll.body, bg=T.CARD, padx=28, pady=22)
+        body.pack(fill="both", expand=True)
 
-        text_frame = ttk.Frame(right)
-        text_frame.pack(fill="x", pady=(4, 10))
-        self.q_text = tk.Text(text_frame, wrap="word", height=7, padx=8, pady=6, relief="solid", borderwidth=1)
-        q_scroll = ttk.Scrollbar(text_frame, orient="vertical", command=self.q_text.yview)
-        self.q_text.configure(yscrollcommand=q_scroll.set, state="disabled")
-        self.q_text.pack(side="left", fill="x", expand=True)
-        q_scroll.pack(side="left", fill="y")
+        head = tk.Frame(body, bg=T.CARD)
+        head.pack(fill="x", pady=(0, 14))
+        self.badge = tk.Label(head, text="", bg=T.ACCENT, fg="#FFFFFF", font=f.heading, width=3, pady=2)
+        self.badge.pack(side="left", padx=(0, 10))
+        self.type_chip = T.chip(head, "", fg=T.ACCENT, bg=T.ACCENT_SOFT, font=f.small_bold)
+        self.type_chip.pack(side="left", padx=(0, 6))
+        self.points_chip = T.chip(head, "", fg=T.MUTED, bg=T.BG, font=f.small_bold)
+        self.points_chip.pack(side="left")
 
-        self.answer_frame = ttk.Frame(right)
-        self.answer_frame.pack(fill="both", expand=True)
+        self.q_text = T.RichText(body, f, size=f.size + 2, max_lines=16)
+        self.q_text.pack(fill="x", pady=(0, 16))
+        self.answer_frame = tk.Frame(body, bg=T.CARD)
+        self.answer_frame.pack(fill="x")
 
-        nav = ttk.Frame(right)
-        nav.pack(fill="x", pady=(10, 0))
-        self.prev_button = ttk.Button(nav, text="◀ 이전", command=self.prev)
+        nav = tk.Frame(main, bg=T.CARD, padx=28, pady=16)
+        nav.pack(fill="x", side="bottom")
+        self.prev_button = ttk.Button(nav, text="◀  이전", style="Secondary.TButton", command=self.prev)
         self.prev_button.pack(side="left")
-        self.next_button = ttk.Button(nav, text="다음 ▶", command=self.next)
+        self.next_button = ttk.Button(nav, text="다음  ▶", style="Secondary.TButton", command=self.next)
         self.next_button.pack(side="right")
 
-        # 하단
-        bottom = ttk.Frame(self)
-        bottom.pack(fill="x", pady=(10, 0))
-        ttk.Button(bottom, text="홈", command=self.home).pack(side="left")
-        ttk.Label(bottom, text="PgUp/PgDn 또는 ←/→ 이동  ·  숫자 키로 보기 선택  ·  Enter 다음  ·  Ctrl+Enter 제출", foreground="#888").pack(side="left", padx=12)
-        ttk.Button(bottom, text="제출하기", command=self.submit, style="Big.TButton").pack(side="right")
+        # 하단 바
+        tk.Frame(self, bg=T.BORDER, height=1).pack(fill="x")
+        bottom = tk.Frame(self, bg=T.CARD, padx=24, pady=10)
+        bottom.pack(fill="x")
+        ttk.Button(bottom, text="⌂  홈", style="Ghost.TButton", command=self.home).pack(side="left")
+        T.label(bottom, "PgUp/PgDn 이동  ·  숫자 키로 보기 선택  ·  Enter 다음  ·  Ctrl+Enter 제출", fg=T.FAINT, font=f.small).pack(side="left", padx=16)
+        ttk.Button(bottom, text="제출하기", style="Primary.TButton", command=self.submit).pack(side="right", ipadx=6)
 
         app.bind("<Left>", self._key_prev)
         app.bind("<Prior>", self._key_prev)
@@ -96,10 +169,24 @@ class ExamView(ttk.Frame):
         self.responses = {}
         self.index = 0
         self.title_label.configure(text=exam.title)
-        self.desc_label.configure(text=exam.description)
-        self.tree.delete(*self.tree.get_children())
-        for q in exam.questions:
-            self.tree.insert("", "end", iid=str(q.number), values=(q.number, ""))
+        mc = sum(1 for q in exam.questions if q.is_multiple_choice)
+        desc = f"객관식 {mc}문항, 단답형 {len(exam.questions) - mc}문항 · 총 {exam.total_points}점"
+        if exam.description:
+            desc = f"{exam.description}  ·  {desc}"
+        self.desc_label.configure(text=desc)
+        self.progress.configure(maximum=max(1, len(exam.questions)))
+
+        for child in self.number_grid.winfo_children():
+            child.destroy()
+        self.number_buttons = {}
+        for i, q in enumerate(exam.questions):
+            outer = tk.Frame(self.number_grid, bg=T.BORDER)
+            outer.grid(row=i // GRID_COLUMNS, column=i % GRID_COLUMNS, padx=3, pady=3)
+            btn = tk.Button(outer, text=str(q.number), width=3, relief="flat", bd=0, highlightthickness=0,
+                            font=self.app.fonts.bold, cursor="hand2", pady=6,
+                            command=lambda idx=i: self.show_question(idx))
+            btn.pack(padx=1, pady=1)
+            self.number_buttons[q.number] = (outer, btn)
         self.show_question(0)
 
     @property
@@ -116,107 +203,99 @@ class ExamView(ttk.Frame):
         assert self.exam is not None
         self.index = max(0, min(index, len(self.exam.questions) - 1))
         q = self.current
-        self.q_header.configure(text=f"{q.number}.  [{q.points}점]  {q.type_label}")
-        self.q_text.configure(state="normal")
-        self.q_text.delete("1.0", "end")
-        self.q_text.insert("1.0", q.text)
-        self.q_text.configure(state="disabled")
-        self._build_answer(q)
+        self.badge.configure(text=str(q.number))
+        multi = q.is_multiple_choice and (self.key.is_multi_select(q.number) or self.app.settings.always_checkbox)  # type: ignore[union-attr]
+        self.type_chip.configure(text="객관식 · 모두 고르기" if multi else q.type_label)
+        self.points_chip.configure(text=f"{q.points}점")
+        self.q_text.set_markup(q.text)
+        self._build_answer(q, multi)
         self.prev_button.state(["disabled"] if self.index == 0 else ["!disabled"])
         self.next_button.state(["disabled"] if self.index == len(self.exam.questions) - 1 else ["!disabled"])
-        self._suppress_tree_event = True
-        self.tree.selection_set(str(q.number))
-        self.tree.see(str(q.number))
-        self._suppress_tree_event = False
+        self._paint_numbers()
         self._update_progress()
+        self.scroll.scroll_top()
 
-    def _build_answer(self, q: Question) -> None:
+    def _build_answer(self, q: Question, multi: bool) -> None:
         for child in self.answer_frame.winfo_children():
             child.destroy()
-        self._answer_vars = []
+        self.option_rows = []
         self._entry = None
+        self._entry_var = None
         saved = self.responses.get(q.number)
+        f = self.app.fonts
 
         if q.is_multiple_choice:
-            assert self.key is not None
             chosen: set[int] = saved if isinstance(saved, set) else set()
-            multi = self.key.is_multi_select(q.number) or self.app.settings.always_checkbox
             if multi:
-                ttk.Label(self.answer_frame, text="해당하는 것을 모두 고르세요.", foreground="#666").pack(anchor="w", pady=(0, 4))
-                for c in q.choices:
-                    var = tk.BooleanVar(value=c.number in chosen)
-                    self._answer_vars.append(var)
-                    tk.Checkbutton(
-                        self.answer_frame, text=f"{c.number})  {c.text}", variable=var,
-                        anchor="w", justify="left", wraplength=640, command=self._save_choices,
-                    ).pack(anchor="w", fill="x")
-            else:
-                var = tk.IntVar(value=next(iter(chosen)) if chosen else 0)
-                self._answer_vars.append(var)
-                for c in q.choices:
-                    tk.Radiobutton(
-                        self.answer_frame, text=f"{c.number})  {c.text}", variable=var, value=c.number,
-                        anchor="w", justify="left", wraplength=640, command=self._save_choices,
-                    ).pack(anchor="w", fill="x")
+                T.label(self.answer_frame, "해당하는 것을 모두 고르세요.", fg=T.MUTED, font=f.small).pack(anchor="w", pady=(0, 6))
+            for c in q.choices:
+                row = OptionRow(self.answer_frame, self, c.number, c.text, multi)
+                row.pack(fill="x", pady=(0, 8))
+                row.set_selected(c.number in chosen)
+                self.option_rows.append(row)
         else:
-            ttk.Label(self.answer_frame, text="답:").pack(anchor="w")
+            T.label(self.answer_frame, "답", fg=T.MUTED, font=f.small_bold).pack(anchor="w", pady=(0, 4))
             var = tk.StringVar(value=saved if isinstance(saved, str) else "")
-            self._answer_vars.append(var)
-            entry = ttk.Entry(self.answer_frame, textvariable=var, width=40, font=self.app.font_entry)
-            entry.pack(anchor="w", pady=(2, 0))
+            entry = ttk.Entry(self.answer_frame, textvariable=var, width=44, font=f.body)
+            entry.pack(anchor="w")
             entry.bind("<Return>", lambda _e: self.next())
             var.trace_add("write", lambda *_: self._save_text())
             self._entry = entry
+            self._entry_var = var
             entry.focus_set()
             entry.icursor("end")
+            T.label(self.answer_frame, "앞뒤 공백과 영문 대소문자는 구분하지 않습니다.", fg=T.FAINT, font=f.small).pack(anchor="w", pady=(6, 0))
+
+    def _paint_numbers(self) -> None:
+        assert self.exam is not None
+        current = self.current.number
+        for number, (outer, btn) in self.number_buttons.items():
+            answered = bool(self.responses.get(number))
+            if number == current:
+                outer.configure(bg=T.ACCENT)
+                btn.configure(bg=T.ACCENT_SOFT, fg=T.ACCENT, activebackground=T.ACCENT_SOFT, activeforeground=T.ACCENT)
+            elif answered:
+                outer.configure(bg=T.ACCENT)
+                btn.configure(bg=T.ACCENT, fg="#FFFFFF", activebackground=T.ACCENT_DARK, activeforeground="#FFFFFF")
+            else:
+                outer.configure(bg=T.BORDER)
+                btn.configure(bg=T.CARD, fg=T.TEXT, activebackground=T.BG, activeforeground=T.TEXT)
 
     # ------------------------------------------------------------ 응답 저장
 
-    def _save_choices(self) -> None:
+    def toggle_choice(self, number: int) -> None:
         q = self.current
-        chosen: set[int] = set()
-        if len(self._answer_vars) == 1 and isinstance(self._answer_vars[0], tk.IntVar):
-            value = self._answer_vars[0].get()
-            if value:
-                chosen.add(value)
+        current: set[int] = self.responses.get(q.number) if isinstance(self.responses.get(q.number), set) else set()  # type: ignore[assignment]
+        multi = any(r.multi for r in self.option_rows)
+        if multi:
+            chosen = set(current)
+            chosen ^= {number}
         else:
-            for c, var in zip(q.choices, self._answer_vars):
-                if var.get():
-                    chosen.add(c.number)
+            chosen = {number}
+        for row in self.option_rows:
+            row.set_selected(row.number in chosen)
         self._set_response(q.number, chosen if chosen else None)
 
     def _save_text(self) -> None:
-        q = self.current
-        value = self._answer_vars[0].get()
-        self._set_response(q.number, value if value.strip() else None)
+        assert self._entry_var is not None
+        value = self._entry_var.get()
+        self._set_response(self.current.number, value if value.strip() else None)
 
     def _set_response(self, number: int, value: ResponseValue) -> None:
         if value is None:
             self.responses.pop(number, None)
         else:
             self.responses[number] = value
-        self.tree.item(str(number), values=(number, "✓" if value is not None else ""))
+        self._paint_numbers()
         self._update_progress()
 
     def _update_progress(self) -> None:
         assert self.exam is not None
-        self.progress_label.configure(text=f"응답 {self.answered_count()} / {len(self.exam.questions)}")
+        n = self.answered_count()
+        self.progress_label.configure(text=f"응답 {n} / {len(self.exam.questions)}")
+        self.progress.configure(value=n)
 
     # ------------------------------------------------------------ 이동
-
-    def _on_tree_select(self, _event=None) -> None:
-        if self._suppress_tree_event or self.exam is None:
-            return
-        selection = self.tree.selection()
-        if not selection:
-            return
-        number = int(selection[0])
-        if number == self.current.number:
-            return  # selection_set()이 다시 보낸 이벤트
-        for i, q in enumerate(self.exam.questions):
-            if q.number == number:
-                self.show_question(i)
-                break
 
     def prev(self) -> None:
         if self.exam and self.index > 0:
@@ -231,7 +310,7 @@ class ExamView(ttk.Frame):
 
     def _focus_in_entry(self) -> bool:
         widget = self.app.focus_get()
-        return isinstance(widget, (ttk.Entry, tk.Entry, tk.Text)) and widget is not self.q_text
+        return isinstance(widget, (ttk.Entry, tk.Entry)) or (isinstance(widget, tk.Text) and not getattr(widget, "_rich", False))
 
     def _key_prev(self, _event=None):
         if self._active() and not self._focus_in_entry():
@@ -255,12 +334,7 @@ class ExamView(ttk.Frame):
         n = int(event.char)
         if not q.is_multiple_choice or not 1 <= n <= len(q.choices):
             return None
-        if len(self._answer_vars) == 1 and isinstance(self._answer_vars[0], tk.IntVar):
-            self._answer_vars[0].set(n)
-        else:
-            var = self._answer_vars[n - 1]
-            var.set(not var.get())
-        self._save_choices()
+        self.toggle_choice(n)
         return "break"
 
     # ------------------------------------------------------------ 제출 / 홈

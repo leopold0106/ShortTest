@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from .markup import strip_markup
 from .model import AnswerValue, ResponseValue, Result
 
 
 def format_answer(value: AnswerValue) -> str:
     if isinstance(value, set):
         return ", ".join(str(n) for n in sorted(value))
-    return " | ".join(value)
+    return " | ".join(strip_markup(v) for v in value)
 
 
 def format_response(value: ResponseValue) -> str:

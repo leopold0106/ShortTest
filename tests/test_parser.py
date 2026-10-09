@@ -17,16 +17,16 @@ def test_parse_example_files():
     exam, key, warnings = load_exam(EXAMPLES / "sample.questions.txt", EXAMPLES / "sample.answers.txt")
     assert warnings == []
     assert exam.title == "샘플 시험 (과학)"
-    assert exam.description.startswith("객관식 3문항")
-    assert [q.number for q in exam.questions] == [1, 2, 3, 4, 5]
+    assert exam.description.startswith("학명 이탤릭")
+    assert [q.number for q in exam.questions] == [1, 2, 3, 4, 5, 6]
     assert exam.questions[0].points == 2
     assert exam.questions[0].text == "세포 안에서 에너지를 생산하는 소기관은?"
     assert [c.text for c in exam.questions[0].choices] == ["핵", "미토콘드리아", "리보솜", "골지체"]
     assert not exam.questions[1].is_multiple_choice
-    assert exam.questions[3].text == "다음 반응의 생성물을 쓰시오.\n   2H2 + O2 -> ?"
+    assert exam.questions[3].text == "다음 반응의 생성물을 쓰시오.\n   2H_{2} + O_{2} -> ?"
     assert [c.number for c in exam.questions[4].choices] == [1, 2, 3, 4]  # ① 보기
-    assert key.answers == {1: {2}, 2: ["엽록체"], 3: {1, 3}, 4: ["물", "H2O", "2H2O"], 5: {1}}
-    assert exam.total_points == 2 + 1 + 3 + 1 + 1
+    assert key.answers == {1: {2}, 2: ["엽록체"], 3: {1, 3}, 4: ["물", "H2O", "2H2O", "H_{2}O"], 5: {1}, 6: ["Escherichia"]}
+    assert exam.total_points == 2 + 1 + 3 + 1 + 1 + 1
 
 
 def test_title_defaults_to_filename():

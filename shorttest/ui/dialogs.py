@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from shorttest.core.parser import QUESTIONS_SUFFIX, ParseIssue, default_answers_path
 from shorttest.help_text import HELP_TEXT, HELP_TITLE, TEMPLATE_ANSWERS, TEMPLATE_QUESTIONS
+from shorttest.ui import theme as T
 
 
 def _center_over(window: tk.Toplevel, parent: tk.Misc) -> None:
@@ -16,6 +17,10 @@ def _center_over(window: tk.Toplevel, parent: tk.Misc) -> None:
     pw, ph = parent.winfo_width(), parent.winfo_height()
     w, h = window.winfo_width(), window.winfo_height()
     window.geometry(f"+{max(0, px + (pw - w) // 2)}+{max(0, py + (ph - h) // 2)}")
+
+
+def _fonts(widget: tk.Misc) -> T.Fonts:
+    return widget.winfo_toplevel().nametowidget(".").fonts  # type: ignore[attr-defined]
 
 
 def save_template(parent: tk.Misc) -> None:
@@ -59,68 +64,71 @@ class HelpWindow(tk.Toplevel):
         return cls._instance
 
     def __init__(self, parent: tk.Misc):
-        super().__init__(parent)
+        super().__init__(parent, bg=T.BG)
         self.title(HELP_TITLE)
-        self.geometry("760x640")
-        self.minsize(520, 400)
+        self.geometry("780x660")
+        self.minsize(560, 420)
+        f = _fonts(parent)
 
-        body = ttk.Frame(self, padding=8)
-        body.pack(fill="both", expand=True)
-        text = tk.Text(body, wrap="word", padx=12, pady=8, relief="flat")
+        head = tk.Frame(self, bg=T.BG, padx=20, pady=14)
+        head.pack(fill="x")
+        T.label(head, HELP_TITLE, font=f.heading).pack(side="left")
+        T.label(head, "docs/FORMAT.md 와 같은 내용", fg=T.MUTED, font=f.small).pack(side="right")
+
+        body = T.card(self)
+        body.outer.pack(fill="both", expand=True, padx=20)
+        text = tk.Text(body, wrap="word", padx=18, pady=14, relief="flat", bg=T.CARD, fg=T.TEXT, font=f.base, spacing2=2)
         scroll = ttk.Scrollbar(body, orient="vertical", command=text.yview)
         text.configure(yscrollcommand=scroll.set)
-        text.grid(row=0, column=0, sticky="nsew")
-        scroll.grid(row=0, column=1, sticky="ns")
-        body.rowconfigure(0, weight=1)
-        body.columnconfigure(0, weight=1)
-        text.insert("1.0", HELP_TEXT)
+        text.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="left", fill="y")
+        text.tag_configure("h", font=f.heading, foreground=T.ACCENT, spacing1=10, spacing3=4)
+        for line in HELP_TEXT.splitlines(keepends=True):
+            text.insert("end", line, ("h",) if line.startswith("■") else ())
         text.configure(state="disabled")
 
-        buttons = ttk.Frame(self, padding=(8, 0, 8, 8))
+        buttons = tk.Frame(self, bg=T.BG, padx=20, pady=14)
         buttons.pack(fill="x")
-        ttk.Button(buttons, text="템플릿 파일 만들기...", command=lambda: save_template(self)).pack(side="left")
-        ttk.Button(buttons, text="닫기", command=self.destroy).pack(side="right")
+        ttk.Button(buttons, text="템플릿 파일 만들기…", style="Outline.TButton", command=lambda: save_template(self)).pack(side="left")
+        ttk.Button(buttons, text="닫기", style="Secondary.TButton", command=self.destroy).pack(side="right")
         self.bind("<Escape>", lambda _e: self.destroy())
         _center_over(self, parent.winfo_toplevel())
 
 
 def show_parse_errors(parent: tk.Misc, issues: list[ParseIssue]) -> None:
-    win = tk.Toplevel(parent)
+    f = _fonts(parent)
+    win = tk.Toplevel(parent, bg=T.BG)
     win.title("문제지·정답지 오류")
     win.transient(parent.winfo_toplevel())
-    win.geometry("760x420")
-    win.minsize(500, 300)
+    win.geometry("780x440")
+    win.minsize(520, 300)
 
-    frame = ttk.Frame(win, padding=10)
-    frame.pack(fill="both", expand=True)
-    ttk.Label(
-        frame,
-        text=f"파일에 오류가 {len(issues)}개 있습니다. 메모장에서 해당 줄을 고친 뒤 다시 여세요.",
-    ).pack(anchor="w", pady=(0, 8))
+    head = tk.Frame(win, bg=T.BG, padx=20, pady=14)
+    head.pack(fill="x")
+    T.label(head, f"파일에 오류가 {len(issues)}개 있습니다.", font=f.heading, fg=T.BAD_FG).pack(anchor="w")
+    T.label(head, "메모장에서 해당 줄을 고친 뒤 다시 여세요. 오류는 한 번에 모두 표시됩니다.", fg=T.MUTED).pack(anchor="w")
 
-    table_frame = ttk.Frame(frame)
-    table_frame.pack(fill="both", expand=True)
+    table = T.card(win)
+    table.outer.pack(fill="both", expand=True, padx=20)
     cols = ("file", "line", "message")
-    tree = ttk.Treeview(table_frame, columns=cols, show="headings", selectmode="browse")
+    tree = ttk.Treeview(table, columns=cols, show="headings", selectmode="browse")
     tree.heading("file", text="파일")
     tree.heading("line", text="줄")
     tree.heading("message", text="내용")
-    tree.column("file", width=180, stretch=False)
-    tree.column("line", width=50, anchor="center", stretch=False)
+    tree.column("file", width=190, stretch=False)
+    tree.column("line", width=56, anchor="center", stretch=False)
     tree.column("message", width=480)
-    scroll = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+    scroll = ttk.Scrollbar(table, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scroll.set)
-    tree.grid(row=0, column=0, sticky="nsew")
-    scroll.grid(row=0, column=1, sticky="ns")
-    table_frame.rowconfigure(0, weight=1)
-    table_frame.columnconfigure(0, weight=1)
+    tree.pack(side="left", fill="both", expand=True)
+    scroll.pack(side="left", fill="y")
     for issue in issues:
         tree.insert("", "end", values=(issue.filename, issue.line or "", issue.message))
 
-    buttons = ttk.Frame(frame, padding=(0, 8, 0, 0))
+    buttons = tk.Frame(win, bg=T.BG, padx=20, pady=14)
     buttons.pack(fill="x")
-    ttk.Button(buttons, text="작성법 보기", command=lambda: HelpWindow.show(parent)).pack(side="left")
-    ttk.Button(buttons, text="닫기", command=win.destroy).pack(side="right")
+    ttk.Button(buttons, text="작성법 보기", style="Outline.TButton", command=lambda: HelpWindow.show(parent)).pack(side="left")
+    ttk.Button(buttons, text="닫기", style="Primary.TButton", command=win.destroy).pack(side="right")
     win.bind("<Escape>", lambda _e: win.destroy())
     _center_over(win, parent.winfo_toplevel())
     win.grab_set()
